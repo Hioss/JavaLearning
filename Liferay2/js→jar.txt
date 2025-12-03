@@ -1,0 +1,160 @@
+document-preview-ctrlwheel-zoom
+├─ bnd.bnd
+├─ build.gradle
+└─ src
+   ├─ main
+   │  ├─ java
+   │  │  └─ com
+   │  │     └─ example
+   │  │        └─ documentpreview
+   │  │           └─ zoom
+   │  │              └─ internal
+   │  │                 └─ servlet
+   │  │                    └─ taglib
+   │  │                       └─ CtrlWheelZoomDynamicInclude.java
+   │  └─ resources
+   │     └─ META-INF
+   │        └─ resources
+   │           └─ js
+   │              └─ ctrlWheelZoom.js
+
+【build.gradle】
+dependencies {
+    compileOnly group: "com.liferay.portal", name: "release.dxp.api"
+
+    tasks.withType(JavaCompile) {
+       options.encoding = 'MS932'
+    }
+}
+
+【bnd.bnd】
+Bundle-Name: document-preview-ctrlwheel-zoom
+Bundle-SymbolicName: document.preview.ctrlwheel.zoom
+Bundle-Version: 1.0.0
+Web-ContextPath: /document-preview-ctrlwheel-zoom
+
+【DynamicInclude Java 代码】
+package com.example.documentpreview.zoom.internal.servlet.taglib;
+
+import com.liferay.portal.kernel.servlet.taglib.DynamicInclude;
+import com.liferay.portal.kernel.servlet.taglib.DynamicInclude.DynamicIncludeRegistry;
+import com.liferay.portal.kernel.util.PortalUtil;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.osgi.service.component.annotations.Component;
+
+/**
+ * 在文档预览页面（view_file_entry.jsp）插入自定义 JS。
+ */
+@Component(
+    immediate = true,
+    service = DynamicInclude.class
+)
+public class CtrlWheelZoomDynamicInclude implements DynamicInclude {
+
+    @Override
+    public void include(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            String key)
+        throws IOException {
+
+        PrintWriter out = response.getWriter();
+
+        // Web-ContextPath 在 bnd.bnd 中配置为 /document-preview-ctrlwheel-zoom
+        String contextPath = PortalUtil.getPathContext();
+
+        // 资源 URL: /o/document-preview-ctrlwheel-zoom/js/ctrlWheelZoom.js
+        String scriptUrl =
+            contextPath + "/o/document-preview-ctrlwheel-zoom/js/ctrlWheelZoom.js";
+
+        out.println("<script type=\"text/javascript\" src=\"" + scriptUrl + "\"></script>");
+    }
+
+    @Override
+    public void register(DynamicIncludeRegistry registry) {
+        /*
+         * 这里的 key 决定插入到哪个 JSP 的哪个位置。
+         * 下面这个 key 是常见写法：
+         *   "com.liferay.document.library.web#/document_library/view_file_entry.jsp#post"
+         *
+         * 如果你的版本有差异，可以：
+         *   - 到源代码里搜索 view_file_entry.jsp 里的 DynamicInclude.register(...) 调用
+         *   - 或用 Gogo shell 查看已注册的 DynamicInclude keys
+         */
+        registry.register(
+            "com.liferay.document.library.web#/document_library/view_file_entry.jsp#post");
+    }
+}
+
+【ctrlWheelZoom.js】
+// ctrlWheelZoom.js
+
+(function () {
+  // 这里可以根据你的页面结构调整选择器
+  // 比如预览区域经常是 .lfr-preview-file-content 或 iframe 里的内容
+  var SCALE_STEP = 0.1;
+  var MIN_SCALE = 0.2;
+  var MAX_SCALE = 5;
+  var currentScale = 1;
+
+  function getPreviewElement() {
+    // 根据实际情况修改：这是一个比较常见的预览区域容器 class
+    var el = document.querySelector('.lfr-preview-file-content');
+
+    // 如果找不到，可以考虑 document.body 或其它你在自定义 JS 里用的选择器
+    if (!el) {
+      el = document.body;
+    }
+
+    return el;
+  }
+
+  function applyScale(scale) {
+    var el = getPreviewElement();
+
+    if (!el) {
+      return;
+    }
+
+    el.style.transformOrigin = 'center top';
+    el.style.transform = 'scale(' + scale + ')';
+  }
+
+  function onWheel(e) {
+    // 只有按下 Ctrl 键时才触发缩放
+    if (!e.ctrlKey) {
+      return;
+    }
+
+    // 防止页面默认缩放行为
+    e.preventDefault();
+
+    if (e.deltaY < 0) {
+      // 向上滚 -> 放大
+      currentScale = Math.min(MAX_SCALE, currentScale + SCALE_STEP);
+    } else {
+      // 向下滚 -> 缩小
+      currentScale = Math.max(MIN_SCALE, currentScale - SCALE_STEP);
+    }
+
+    applyScale(currentScale);
+  }
+
+  function init() {
+    // passive: false 才能调用 preventDefault()
+    window.addEventListener('wheel', onWheel, { passive: false });
+  }
+
+  // DOM ready 后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
