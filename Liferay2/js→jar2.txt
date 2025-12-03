@@ -1,0 +1,151 @@
+modules/
+└─ document-preview-wheel-scroll/
+   ├─ bnd.bnd
+   ├─ build.gradle
+   └─ src/
+      └─ main/
+         ├─ java/
+         │  └─ com/example/document/preview/wheel/
+         │     └─ DocumentPreviewWheelScrollDynamicInclude.java
+         └─ resources/
+            └─ META-INF/
+               └─ resources/
+                  └─ js/
+                     └─ wheelScroll.js
+
+
+【build.gradle】
+dependencies {
+    compileOnly group: "com.liferay.portal", name: "release.dxp.api"
+
+    tasks.withType(JavaCompile) {
+       options.encoding = 'MS932'
+    }
+}
+
+【bnd.bnd】
+Bundle-Name: Document Preview Wheel Scroll
+Bundle-SymbolicName: document-preview-wheel-scroll
+Bundle-Version: 1.0.0
+
+
+【DynamicInclude Java 代码】
+package com.example.document.preview.wheel;
+
+import com.liferay.portal.kernel.servlet.taglib.DynamicInclude;
+import com.liferay.portal.kernel.servlet.taglib.DynamicIncludeRegistry;
+import com.liferay.portal.kernel.servlet.taglib.BaseDynamicInclude;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.osgi.service.component.annotations.Component;
+
+/**
+ * 在 DL 文档预览 JSP 中插入我们自己的 wheelScroll.js。
+ */
+@Component(
+    service = DynamicInclude.class
+)
+public class DocumentPreviewWheelScrollDynamicInclude extends BaseDynamicInclude {
+
+    @Override
+    public void register(DynamicIncludeRegistry dynamicIncludeRegistry) {
+
+        // 挂在 Document Library 文件预览 JSP 上
+        // 这个 key 会在 /document_library/view_file_entry.jsp 渲染时触发
+        dynamicIncludeRegistry.register(
+            "com.liferay.document.library.web#/document_library/view_file_entry.jsp#post");
+    }
+
+    @Override
+    public void include(
+            HttpServletRequest request, HttpServletResponse response, String key)
+        throws IOException {
+
+        PrintWriter out = response.getWriter();
+
+        // contextPath 一般是类似于 "/group/guest" 这样的路径前缀
+        String contextPath = request.getContextPath();
+
+        // /o/ + Bundle Symbolic Name + /js/wheelScroll.js
+        String scriptUrl =
+            contextPath +
+            "/o/document-preview-wheel-scroll/js/wheelScroll.js";
+
+        // 输出 script 标签
+        out.println("<script src=\"" + scriptUrl + "\"></script>");
+    }
+
+}
+
+
+【ctrlWheelZoom.js】
+// ctrlWheelZoom.js
+
+(function () {
+  // 这里可以根据你的页面结构调整选择器
+  // 比如预览区域经常是 .lfr-preview-file-content 或 iframe 里的内容
+  var SCALE_STEP = 0.1;
+  var MIN_SCALE = 0.2;
+  var MAX_SCALE = 5;
+  var currentScale = 1;
+
+  function getPreviewElement() {
+    // 根据实际情况修改：这是一个比较常见的预览区域容器 class
+    var el = document.querySelector('.lfr-preview-file-content');
+
+    // 如果找不到，可以考虑 document.body 或其它你在自定义 JS 里用的选择器
+    if (!el) {
+      el = document.body;
+    }
+
+    return el;
+  }
+
+  function applyScale(scale) {
+    var el = getPreviewElement();
+
+    if (!el) {
+      return;
+    }
+
+    el.style.transformOrigin = 'center top';
+    el.style.transform = 'scale(' + scale + ')';
+  }
+
+  function onWheel(e) {
+    // 只有按下 Ctrl 键时才触发缩放
+    if (!e.ctrlKey) {
+      return;
+    }
+
+    // 防止页面默认缩放行为
+    e.preventDefault();
+
+    if (e.deltaY < 0) {
+      // 向上滚 -> 放大
+      currentScale = Math.min(MAX_SCALE, currentScale + SCALE_STEP);
+    } else {
+      // 向下滚 -> 缩小
+      currentScale = Math.max(MIN_SCALE, currentScale - SCALE_STEP);
+    }
+
+    applyScale(currentScale);
+  }
+
+  function init() {
+    // passive: false 才能调用 preventDefault()
+    window.addEventListener('wheel', onWheel, { passive: false });
+  }
+
+  // DOM ready 后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
