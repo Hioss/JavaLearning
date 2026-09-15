@@ -1,0 +1,7 @@
+sudo netstat -lntp | grep -E ':80|:8080'
+
+grep -Rni "Listen" /etc/httpd/conf /etc/httpd/conf.d 2>/dev/null
+
+grep -Rni "<VirtualHost" /etc/httpd/conf /etc/httpd/conf.d 2>/dev/null
+
+grep -RniE "WSGI|mod_wsgi|mod_python|PythonHandler|django.core.handlers|ProxyPass|fastcgi|fcgi|mysite" /etc/httpd/conf /etc/httpd/conf.d 2>/dev/null
