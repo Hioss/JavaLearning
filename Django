@@ -1,7 +1,15 @@
-sudo netstat -lntp | grep -E ':80|:8080'
+https://github.com/microsoft/WSL/releases/tag/2.7.14
+wsl.2.7.14.0.x64.msi
 
-grep -Rni "Listen" /etc/httpd/conf /etc/httpd/conf.d 2>/dev/null
+wsl.exe --version
+wsl.exe --status
+wsl.exe --set-default-version 2
 
-grep -Rni "<VirtualHost" /etc/httpd/conf /etc/httpd/conf.d 2>/dev/null
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+重新启动电脑
 
-grep -RniE "WSGI|mod_wsgi|mod_python|PythonHandler|django.core.handlers|ProxyPass|fastcgi|fcgi|mysite" /etc/httpd/conf /etc/httpd/conf.d 2>/dev/null
+https://docs.docker.com/desktop/setup/install/windows-install/
+Docker Desktop for Windows - x86_64
+
+docker version
+docker info
