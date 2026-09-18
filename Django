@@ -1,15 +1,1 @@
-https://github.com/microsoft/WSL/releases/tag/2.7.14
-wsl.2.7.14.0.x64.msi
-
-wsl.exe --version
-wsl.exe --status
-wsl.exe --set-default-version 2
-
-dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-重新启动电脑
-
-https://docs.docker.com/desktop/setup/install/windows-install/
-Docker Desktop for Windows - x86_64
-
-docker version
-docker info
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
