@@ -1,1 +1,1 @@
-python -c "import django, oracledb; print('Django =', django.get_version()); print('oracledb =', oracledb.__version__)"
+python -m pip install "Django==5.2.17"
