@@ -1,1 +1,24 @@
-python -m pip install "Django==5.2.17"
+[global]
+proxy = http://用户名:密码@代理服务器IP:端口
+timeout = 60
+retries = 5
+index-url = https://pypi.org/simple
+trusted-host =
+    pypi.org
+    files.pythonhosted.org
+
+[install]
+progress-bar = on
+
+例如
+[global]
+proxy = http://user01:Pass1234@10.20.30.40:8080
+timeout = 60
+retries = 5
+index-url = https://pypi.org/simple
+trusted-host =
+    pypi.org
+    files.pythonhosted.org
+
+测试
+python -m pip config debug
