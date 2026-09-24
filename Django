@@ -1,7 +1,1 @@
-Remove-Item Env:LCMONITOR_ORACLE_DSN -ErrorAction SilentlyContinue
-Remove-Item Env:LCMONITOR_ORACLE_USER -ErrorAction SilentlyContinue
-Remove-Item Env:LCMONITOR_ORACLE_PASSWORD -ErrorAction SilentlyContinue
-
-python scripts\validate_development_oracle_target.py
-
-python scripts\check_oracle_connection.py
+python -c "import django, oracledb; print('Django =', django.get_version()); print('oracledb =', oracledb.__version__)"
