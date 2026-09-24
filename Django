@@ -1,1 +1,7 @@
-python -c "import os; from pathlib import Path; from dotenv import load_dotenv; load_dotenv(Path('.env.development.local')); from mysite.oracle_client import LOCAL_DEVELOPMENT_DSN; v=os.getenv('LCMONITOR_ORACLE_DSN'); print('ENV   =',repr(v),'len=',len(v or '')); print('CONST =',repr(LOCAL_DEVELOPMENT_DSN),'len=',len(LOCAL_DEVELOPMENT_DSN)); print('EQUAL =',(v or '').strip().casefold()==LOCAL_DEVELOPMENT_DSN.casefold())"
+Remove-Item Env:LCMONITOR_ORACLE_DSN -ErrorAction SilentlyContinue
+Remove-Item Env:LCMONITOR_ORACLE_USER -ErrorAction SilentlyContinue
+Remove-Item Env:LCMONITOR_ORACLE_PASSWORD -ErrorAction SilentlyContinue
+
+python scripts\validate_development_oracle_target.py
+
+python scripts\check_oracle_connection.py
