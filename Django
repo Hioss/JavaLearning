@@ -1,24 +1,202 @@
-[global]
-proxy = http://用户名:密码@代理服务器IP:端口
-timeout = 60
-retries = 5
-index-url = https://pypi.org/simple
-trusted-host =
-    pypi.org
-    files.pythonhosted.org
 
-[install]
-progress-bar = on
+# Beyond Compare ファイル差分の一括集計
+# 【設定】比較元（左側）と比較先（右側）のフォルダーを指定してください。
+# 例: D:\project\old\src
+$LeftRoot  = 'D:\LEFT_FOLDER'
+# 例: D:\project\new\src
+$RightRoot = 'D:\RIGHT_FOLDER'
 
-例如
-[global]
-proxy = http://user01:Pass1234@10.20.30.40:8080
-timeout = 60
-retries = 5
-index-url = https://pypi.org/simple
-trusted-host =
-    pypi.org
-    files.pythonhosted.org
+$ErrorActionPreference = 'Stop'
 
-测试
-python -m pip config debug
+# 集計結果は、このスクリプトと同じフォルダーに CSV 形式で保存します。
+$OutputCsv = Join-Path $PSScriptRoot 'compare_result.csv'
+$TempDir = Join-Path $env:TEMP ('bc_batch_' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $TempDir | Out-Null
+
+# Beyond Compare の実行ファイルを自動検出します。
+function Get-BCompare {
+    foreach ($candidate in @(
+        "$env:ProgramFiles\Beyond Compare 5\BCompare.exe",
+        "$env:ProgramFiles\Beyond Compare 4\BCompare.exe",
+        "${env:ProgramFiles(x86)}\Beyond Compare 4\BCompare.exe",
+        "$env:ProgramFiles\Beyond Compare 3\BCompare.exe",
+        "${env:ProgramFiles(x86)}\Beyond Compare 3\BCompare.exe"
+    )) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+    $cmd = Get-Command BCompare.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    throw 'BCompare.exe not found. Set the executable path in Get-BCompare.'
+}
+
+# サブフォルダーを含めて、すべてのファイルの相対パスを取得します。
+function Get-FilesMap([string]$root) {
+    $map = @{}
+    Get-ChildItem -LiteralPath $root -File -Recurse -ErrorAction Stop | ForEach-Object {
+        $rel = $_.FullName.Substring($root.Length).TrimStart('\')
+        $map[$rel] = $_.FullName
+    }
+    return $map
+}
+
+function Quote-BC([string]$value) {
+    return '"' + $value.Replace('"','""') + '"'
+}
+
+try {
+    $LeftRoot = (Resolve-Path -LiteralPath $LeftRoot).Path.TrimEnd('\')
+    $RightRoot = (Resolve-Path -LiteralPath $RightRoot).Path.TrimEnd('\')
+    $bc = Get-BCompare
+    $leftMap = Get-FilesMap $LeftRoot
+    $rightMap = Get-FilesMap $RightRoot
+    $paths = @($leftMap.Keys + $rightMap.Keys | Sort-Object -Unique)
+    $results = [System.Collections.Generic.List[object]]::new()
+    $i = 0
+
+    # 両側のファイルを比較し、同一内容のファイルは出力しません。
+    foreach ($rel in $paths) {
+        $i++
+        Write-Progress -Activity 'ファイル比較中' -Status "$i / $($paths.Count): $rel" -PercentComplete (100*$i/[math]::Max(1,$paths.Count))
+        $hasLeft = $leftMap.ContainsKey($rel)
+        $hasRight = $rightMap.ContainsKey($rel)
+
+        if (-not $hasLeft -or -not $hasRight) {
+            $results.Add([pscustomobject]@{
+                File=$rel
+                LeftOnly=''
+                RightOnly=''
+                Changed=''
+                Status=$(if ($hasLeft) {'左側のみ存在'} else {'右側のみ存在'})
+            })
+            continue
+        }
+
+        $left = $leftMap[$rel]
+        $right = $rightMap[$rel]
+
+        # SHA-256 が一致するファイルは、内容が同一と判断して除外します。
+        $lHash = (Get-FileHash -LiteralPath $left -Algorithm SHA256).Hash
+        $rHash = (Get-FileHash -LiteralPath $right -Algorithm SHA256).Hash
+        if ($lHash -eq $rHash) { continue }
+
+        # バイナリファイルは行数の比較ができないため、
+        # 数値を空欄にして区別します。
+        $bytesL = [System.IO.File]::ReadAllBytes($left)
+        $bytesR = [System.IO.File]::ReadAllBytes($right)
+        $binary = $false
+
+        foreach ($data in @($bytesL,$bytesR)) {
+            if ($data.Length -ge 2 -and (
+                ($data[0] -eq 255 -and $data[1] -eq 254) -or
+                ($data[0] -eq 254 -and $data[1] -eq 255)
+            )) { continue }
+
+            $max = [math]::Min($data.Length,8192)
+            for ($j=0; $j -lt $max; $j++) {
+                if ($data[$j] -eq 0) {
+                    $binary = $true
+                    break
+                }
+            }
+            if ($binary) { break }
+        }
+
+        if ($binary) {
+            $results.Add([pscustomobject]@{
+                File=$rel
+                LeftOnly=''
+                RightOnly=''
+                Changed=''
+                Status='バイナリまたは非対応の文字コード'
+            })
+            continue
+        }
+
+        # ファイルごとに Beyond Compare の統計レポートを作成します。
+        $scriptPath = Join-Path $TempDir 'compare.txt'
+        $reportPath = Join-Path $TempDir 'report.txt'
+        if (Test-Path $reportPath) {
+            Remove-Item $reportPath -Force
+        }
+
+        @(
+            'load ' + (Quote-BC $left) + ' ' + (Quote-BC $right),
+            'text-report layout:statistics options:display-mismatches output-to:' + (Quote-BC $reportPath),
+            'close'
+        ) | Set-Content -LiteralPath $scriptPath -Encoding Default
+
+        & $bc "@$scriptPath" | Out-Null
+
+        $report = if (Test-Path $reportPath) {
+            Get-Content -LiteralPath $reportPath -Raw
+        } else { '' }
+
+        # Beyond Compare のバージョンによって
+        # レポート形式が異なる場合があります。
+        # 数値を推測して補完しません。
+        # IDeleted／IAdded／IChanged の列がある場合、
+        # その3項目を抽出します。
+        $deleted = ''
+        $added = ''
+        $changed = ''
+        $lines = @($report -split '\r?\n' | Where-Object { $_.Trim() })
+
+        for ($k=0; $k -lt $lines.Count-1; $k++) {
+            if ($lines[$k] -match 'IDeleted' -and
+                $lines[$k] -match 'IAdded' -and
+                $lines[$k] -match 'IChanged') {
+
+                $sep = if ($lines[$k] -match '\t') { "`t" } else { ',' }
+                $heads = @($lines[$k].Split($sep) | ForEach-Object { $_.Trim(' ','"') })
+                $vals = @($lines[$k+1].Split($sep) | ForEach-Object { $_.Trim(' ','"') })
+
+                $d = [array]::IndexOf($heads,'IDeleted')
+                $a = [array]::IndexOf($heads,'IAdded')
+                $c = [array]::IndexOf($heads,'IChanged')
+
+                if ($d -ge 0 -and $a -ge 0 -and $c -ge 0 -and
+                    $vals.Count -gt [math]::Max($d,[math]::Max($a,$c))) {
+                    $deleted=$vals[$d]
+                    $added=$vals[$a]
+                    $changed=$vals[$c]
+                }
+                break
+            }
+        }
+
+        $status = if ($deleted -match '^\d+$' -and
+                      $added -match '^\d+$' -and
+                      $changed -match '^\d+$') {
+            '差分あり'
+        } else {
+            '統計値を取得できません（レポート形式を確認）'
+        }
+
+        if ($status -ne '差分あり') {
+            Copy-Item -LiteralPath $reportPath -Destination (
+                Join-Path $TempDir ('unparsed_' + $i + '.txt')
+            ) -ErrorAction SilentlyContinue
+        }
+
+        $results.Add([pscustomobject]@{
+            File=$rel
+            LeftOnly=$deleted
+            RightOnly=$added
+            Changed=$changed
+            Status=$status
+        })
+    }
+
+    # Excel で開ける CSV を出力します。
+    $results | Export-Csv -LiteralPath $OutputCsv -NoTypeInformation -Encoding UTF8
+    Write-Host "出力先: $OutputCsv"
+    Write-Host "出力件数: $($results.Count)"
+    Write-Host '統計値が空欄の場合は、Beyond Compare のレポート形式を確認してください。'
+} finally {
+    Write-Progress -Activity 'ファイル比較中' -Completed
+
+    # 調査できるように、一時レポートは削除せずに残します。
+    Write-Host "一時レポート: $TempDir"
+}
