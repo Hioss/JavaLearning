@@ -1,7 +1,1 @@
-Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" |
-Select-Object ProxyEnable,ProxyServer,AutoConfigURL,AutoDetect
-
-Get-Service -Name gupdate,gupdatem -ErrorAction SilentlyContinue |
-Select-Object Name,Status,StartType
-
-Test-NetConnection dl.google.com -Port 443
+curl.exe -I -v --proxy http://172.19.248.129:88 --max-time 15 https://dl.google.com/
